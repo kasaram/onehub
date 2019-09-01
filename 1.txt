@@ -1,0 +1,45 @@
+create or replace TRIGGER insert_to_target AFTER UPDATE or INSERT on source FOR EACH ROW
+DECLARE
+--Cursors to feach data
+CURSOR LastMonthTax is  select Amount(With tax)monthly
+                        from source 
+                        where YYYYMM = :new.YYYYMM and Store_ID = :new.Store_ID;
+                        
+CURSOR Amount2(WithoutTax)Yearrly is  select sum(Amount(Without tax)monthly)
+                        from source 
+                        where YYYYMM between :new.YYYYMM and add_months(trunc(:new.YYYYMM, 'month'), - 12) and Store_ID = :new.Store_ID;
+                        
+CURSOR Amount2(Tax)Yearrly is  select sum(Amount(tax)monthly)
+                        from source 
+                        where YYYYMM between :new.YYYYMM and add_months(trunc(:new.YYYYMM, 'month'), - 12) and Store_ID = :new.Store_ID;
+--variables
+LastMonthTaxVal LastMonthTax%ROWTYPE;
+VarianceVal target.Variance%TYPE;
+Amount2WithOutTaxYearly Amount2(WithoutTax)Yearrly%ROWTYPE;
+Amount2TaxYearly Amount2(Tax)Yearrly%ROWTYPE;
+
+BEGIN
+OPEN LastMonthTax;
+   FETCH LastMonthTax BULK COLLECT INTO LastMonthTaxVal;
+CLOSE LastMonthTax;
+
+OPEN Amount2(WithoutTax)Yearrly;
+   FETCH Amount2(WithoutTax)Yearrly BULK COLLECT INTO Amount2WithOutTaxYearly;
+CLOSE Amount2(WithoutTax)Yearrly;
+
+OPEN Amount2(Tax)Yearrly;
+   FETCH Amount2(Tax)Yearrly BULK COLLECT INTO Amount2TaxYearly;
+CLOSE Amount2(Tax)Yearrly;
+
+VarianceVal = LastMonthTaxVal;
+
+--update target table
+UPDATE target  
+SET Last month tax = LastMonthTaxVal,  
+    Variance = VarianceVal,
+    Amount2 (Without Tax) Yearrly = Amount2WithOutTaxYearly,
+    Amount2(tax) yearly = Amount2TaxYearly
+WHERE YYYYMM = :new.YYYYMM and Store_ID = :new.Store_ID;
+
+end;
+/
