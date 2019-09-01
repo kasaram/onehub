@@ -1,45 +1,48 @@
-create or replace TRIGGER insert_to_target AFTER UPDATE or INSERT on source FOR EACH ROW
-DECLARE
---Cursors to feach data
-CURSOR LastMonthTax is  select Amount_With_tax_monthly
-                        from source 
-                        where YYYYMM = :new.YYYYMM and Store_ID = :new.Store_ID;
-                        
-CURSOR Amount2_Without_Tax_Yearrly_C is  select sum(Amount_Without_tax_monthly)
-                        from source 
-                        where YYYYMM between :new.YYYYMM and add_months(trunc(:new.YYYYMM, 'month'), - 12) and Store_ID = :new.Store_ID;
-                        
-CURSOR Amount2_Tax_Yearrly_C is  select sum(Amount_tax_monthly)
-                        from source 
-                        where YYYYMM between :new.YYYYMM and add_months(trunc(:new.YYYYMM, 'month'), - 12) and Store_ID = :new.Store_ID;
---variables
-LastMonthTaxVal LastMonthTax%ROWTYPE;
-VarianceVal target.Variance%TYPE;
-Amount2WithOutTaxYearly Amount2_Without_Tax_Yearrly_C%ROWTYPE;
-Amount2TaxYearly Amount2_Tax_Yearrly_C%ROWTYPE;
-
+CREATE OR REPLACE TRIGGER insert_to_target ON source  
+  INSTEAD OF INSERT
+   AS
 BEGIN
-OPEN LastMonthTax;
-   FETCH LastMonthTax BULK COLLECT INTO LastMonthTaxVal;
-CLOSE LastMonthTax;
+     
+    DECLARE @LastMonthTaxVal INTEGER = 0;
+    DECLARE @VarianceVal INTEGER = 0;
+    DECLARE @Amount2WithOutTaxYearly INTEGER = 0;
+    DECLARE @Amount2TaxYearly INTEGER = 0;
+     
+DECLARE LastMonthTax CURSOR FOR  select Amount_With_tax_monthly
+                        from source 
+                        where YYYYMM = new.YYYYMM and Store_ID = new.Store_ID;
+                        
+DECLARE Amount2_Without_Tax_Yearrly_C CURSOR FOR select sum(Amount_Without_tax_monthly)
+                        from source 
+                        where YYYYMM between new.YYYYMM and dateadd(month, - 12, trunc(new.YYYYMM, 'month')) and Store_ID = new.Store_ID;
+                        
+DECLARE Amount2_Tax_Yearrly_C CURSOR FOR select sum(Amount_tax_monthly)
+                        from source 
+                        where YYYYMM between new.YYYYMM and dateadd(month, - 12, trunc(new.YYYYMM, 'month')) and Store_ID = new.Store_ID;
+WHILE 1=0 BEGIN
+IF @@FETCH_STATUS <> 0 BREAK;
+    
+    
+  
+    OPEN LastMonthTax;
+   		FETCH LastMonthTax INTO @LastMonthTaxVal;
+    CLOSE LastMonthTax;
 
-OPEN Amount2_Without_Tax_Yearrly_C;
-   FETCH Amount2_Without_Tax_Yearrly_C BULK COLLECT INTO Amount2WithOutTaxYearly;
-CLOSE Amount2_Without_Tax_Yearrly_C;
+    OPEN Amount2_Without_Tax_Yearrly_C;
+       FETCH Amount2_Without_Tax_Yearrly_C INTO @Amount2WithOutTaxYearly;
+    CLOSE Amount2_Without_Tax_Yearrly_C;
 
-OPEN Amount2_Tax_Yearrly_C;
-   FETCH Amount2_Tax_Yearrly_C BULK COLLECT INTO Amount2TaxYearly;
-CLOSE Amount2_Tax_Yearrly_C;
+    OPEN Amount2_Tax_Yearrly_C;
+       FETCH Amount2_Tax_Yearrly_C INTO @Amount2TaxYearly;
+    CLOSE Amount2_Tax_Yearrly_C;
 
-VarianceVal := LastMonthTaxVal;
+    SET @VarianceVal = @LastMonthTaxVal;
+    
+    UPDATE target  
+    SET Last_month_tax = @LastMonthTaxVal,  
+        Variance = @VarianceVal,
+        Amount2_Without_Tax_Yearrly = @Amount2WithOutTaxYearly,
+        Amount2_tax_yearly = @Amount2TaxYearly
+    WHERE YYYYMM = new.YYYYMM and Store_ID = new.Store_ID;
 
---update target table
-UPDATE target  
-SET Last_month_tax = LastMonthTaxVal,  
-    Variance = VarianceVal,
-    Amount2_Without_Tax_Yearrly = Amount2WithOutTaxYearly,
-    Amount2_tax_yearly = Amount2TaxYearly
-WHERE YYYYMM = :new.YYYYMM and Store_ID = :new.Store_ID;
-
-end;
-/
+END$$
