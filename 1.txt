@@ -45,4 +45,4 @@ Amount2_Without_Tax_Yearrly = @Amount2WithOutTaxYearly,
 Amount2_tax_yearly = @Amount2TaxYearly
 WHERE YYYYMM = new.YYYYMM and Store_ID = new.Store_ID;
 
-END$$
+END; 
